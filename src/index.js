@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const line = require("@line/bot-sdk");
-const { getState, setUserId, markTaskDone, updateActivity, resetDaily, getTasks, setTasks } = require("./storage");
+const { getState, setUserId, markTaskDone, updateActivity, resetDaily, getTodayTasks, getHabitTasks, setTodayTasks, setHabitTasks } = require("./storage");
 const { generateReply, formatTaskList } = require("./coach");
 const { startScheduler } = require("./scheduler");
 
@@ -9,54 +9,64 @@ const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
-
 const lineClient = new line.Client(lineConfig);
 const app = express();
 
 app.post("/webhook", line.middleware(lineConfig), async (req, res) => {
-  try {
-    await Promise.all(req.body.events.map(handleEvent));
-    res.json({ status: "ok" });
-  } catch (err) { console.error(err); res.status(500).end(); }
+  try { await Promise.all(req.body.events.map(handleEvent)); res.json({ status: "ok" }); }
+  catch (err) { console.error(err); res.status(500).end(); }
 });
+
+function parseTaskCommand(text) {
+  const lines = text.split("\n").slice(1).filter(l => l.includes(":"));
+  if (lines.length === 0) return null;
+  const tasks = {};
+  for (const l of lines) {
+    const idx = l.indexOf(":");
+    const cat = l.slice(0, idx).trim();
+    const items = l.slice(idx + 1).split(",").map(t => t.trim()).filter(Boolean);
+    if (cat && items.length > 0) tasks[cat] = items;
+  }
+  return Object.keys(tasks).length > 0 ? tasks : null;
+}
 
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
   const userId = event.source.userId;
   const text = event.message.text.trim();
-  setUserId(userId); updateActivity();
+  setUserId(userId);
+  updateActivity();
 
   let replyText;
 
   if (text === "タスク" || text === "今日のタスク") {
     replyText = formatTaskList(getState().doneTasks);
 
-  } else if (text.startsWith("タスク設定")) {
-    const lines = text.split("\n").slice(1).filter(l => l.includes(":"));
-    if (lines.length === 0) {
-      replyText = "新しいタスクをこの形式で送って！\n\nタスク設定\nカテゴリ名: タスク1, タスク2\n\n例:\nタスク設定\nLINE特典: テーマ決め, 本文書く\nメタミー: 質問書く, 説明文書く";
+  } else if (text.startsWith("今日のタスク設定")) {
+    const parsed = parseTaskCommand(text);
+    if (!parsed) {
+      replyText = "形式はこれで送って！\n\n今日のタスク設定\nカテゴリ名: タスク1, タスク2\n\n例:\n今日のタスク設定\nLINE特典: テーマ決め, 本文書く\nメタミー: 質問書く";
     } else {
-      const newTasks = {};
-      for (const l of lines) {
-        const idx = l.indexOf(":");
-        const cat = l.slice(0, idx).trim();
-        const items = l.slice(idx + 1).split(",").map(t => t.trim()).filter(Boolean);
-        if (cat && items.length > 0) newTasks[cat] = items;
-      }
-      if (Object.keys(newTasks).length > 0) {
-        setTasks(newTasks); resetDaily();
-        replyText = "更新した！\n\n" + formatTaskList([]);
-      } else {
-        replyText = "形式が読み取れなかった。もう一度送って！";
-      }
+      setTodayTasks(parsed);
+      resetDaily();
+      replyText = "今日のタスク更新した！\n\n" + formatTaskList([]);
+    }
+
+  } else if (text.startsWith("習慣タスク設定")) {
+    const parsed = parseTaskCommand(text);
+    if (!parsed) {
+      replyText = "形式はこれで送って！\n\n習慣タスク設定\nカテゴリ名: タスク1, タスク2\n\n例:\n習慣タスク設定\n毎日の習慣: SNS投稿, 体を動かす";
+    } else {
+      setHabitTasks(parsed);
+      replyText = "習慣タスク更新した！毎日届くよ。\n\n" + formatTaskList([]);
     }
 
   } else {
     const { doneTasks } = getState();
     replyText = await generateReply(text, doneTasks);
-    if (/やった|完了|できた|終わった/.test(text)) {
-      const tasks = getTasks();
-      for (const list of Object.values(tasks)) {
+    if (/やった|完了|できた|終わった|終わらせた/.test(text)) {
+      const allTasks = { ...getTodayTasks(), ...getHabitTasks() };
+      for (const list of Object.values(allTasks)) {
         for (const task of list) {
           const kw = task.replace(/（.*?）/g, "").split(/[・、。\s]/);
           if (kw.some(k => k.length > 2 && text.includes(k))) markTaskDone(task);
@@ -69,9 +79,5 @@ async function handleEvent(event) {
 }
 
 app.get("/", (req, res) => res.send("Akiko LINE Coach running"));
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server on port ${PORT}`);
-  startScheduler(lineClient);
-});
+app.listen(PORT, () => { console.log(`Server on port ${PORT}`); startScheduler(lineClient); });
