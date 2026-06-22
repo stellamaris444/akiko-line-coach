@@ -1,52 +1,52 @@
 const Anthropic = require("@anthropic-ai/sdk");
-const tasks = require("../tasks");
+const { getTodayTasks, getHabitTasks } = require("./storage");
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SYSTEM = `あなたは亚希子さん専用のコーチングアシスタントです。LINEで短いメッセージを送り合います。
-
-【亚希子さんについて】
-コーチング歴１11年のプロ。LINEプログラムとメタミー性格診断を制作中。
-「自分で稼いだ」という感覚を大切にしていて、いいホテルや旅行に自分のお金で行くのが目標。
-
-【スタイル】
-- 友達みたいに話す。散文慧（タメ口）
-- メッセージは短く。改行を使ってスマホで読みやすく
-- 諃めない。押しつけがましくない
-- 「頑張れ」より「いけるよ」「ちょっとだけやってみ」
-- やれた報告が来たら全力で喜ぶ。大げさなくらいでOK
-- 亚希子って呼ぶ（さん不要）`;
+const SYSTEM = `あなたは亜希子さん専用のコーチングアシスタント。LINEで短いメッセージを送り合う。
+コーチング歴11年のプロ。LINEプログラムとメタミー性格診断を制作中。「自分で稼いだ」という感覚を大切にしている。
+スタイル：友達みたいにタメ口。5行以内。責めない。「いけるよ」「ちょっとだけやってみ」。やれた報告は全力で喜ぶ。亜希子って呼ぶ。`;
 
 function formatTaskList(doneTasks = []) {
-  let msg = "【今日のタスク】\n\n";
-  for (const [cat, list] of Object.entries(tasks)) {
-    msg += `《${cat}》\n`;
+  const today = getTodayTasks();
+  const habit = getHabitTasks();
+  let msg = "【今日のタスク】\n";
+  for (const [cat, list] of Object.entries(today)) {
+    msg += `\n〈${cat}〉\n`;
     list.forEach(t => { msg += `${doneTasks.includes(t) ? "✅" : "▫️"} ${t}\n`; });
-    msg += "\n";
+  }
+  msg += "\n【毎日の習慣】\n";
+  for (const [cat, list] of Object.entries(habit)) {
+    msg += `\n〈${cat}〉\n`;
+    list.forEach(t => { msg += `${doneTasks.includes(t) ? "✅" : "▫️"} ${t}\n`; });
   }
   return msg.trim();
 }
 
-async function callClaude(userMsg, doneTasks = []) {
-  const ctx = `\n\n「タスク」と送られたらリストを返す。\n現在の状況: ${JSON.stringify(doneTasks)}`;
+async function callClaude(prompt, doneTasks = []) {
+  const ctx = `\n\n現在のタスク状況（完了済み）: ${JSON.stringify(doneTasks)}`;
   const res = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 300,
+    model: "claude-sonnet-4-6", max_tokens: 300,
     system: SYSTEM + ctx,
-    messages: [{ role: "user", content: userMsg }],
-});
+    messages: [{ role: "user", content: prompt }],
+  });
   return res.content[0].text;
 }
 
-async function generateReply(msg, doneTasks) { return callClaude(msg, doneTasks); }
+async function generateReply(text, doneTasks) { return callClaude(text, doneTasks); }
 
 async function generateMorningMessage(doneTasks) {
-  return callClaude("今日の朗がい朝のアプローチメッセージとタスクリストを送って。元気よく短く。", doneTasks);
+  const list = formatTaskList(doneTasks);
+  return callClaude(`今日の朝6時のメッセージを送って。タスクリストを以下の内容で伝えて。元気よく短く。\n\n${list}`, doneTasks);
 }
 
 async function generateEveningNudge(doneTasks) {
   const n = doneTasks.length;
-  return callClaude(n === 0 ? "今日まだ何もやってない。责めず、ちょっとだけやる気にさせて。" : `今日${n}個やれた。もう少しいけるかも、優しく背中を押して。`, doneTasks);
+  return callClaude(n === 0 ? "今日まだ何もやってない。責めず、ちょっとだけやる気にさせて。" : `今日${n}個やれた。もう少しいける気がするから優しく背中を押して。`, doneTasks);
 }
 
-module.exports = { generateReply, generateMorningMessage, generateEveningNudge, formatTaskList };
+async function generateHourlyNudge(doneTasks) {
+  return callClaude("朝からまだ返信がない。「やってる？」という感じの短い一言を送って。プレッシャーをかけず、さりげなく。", doneTasks);
+}
+
+module.exports = { generateReply, generateMorningMessage, generateEveningNudge, generateHourlyNudge, formatTaskList };
