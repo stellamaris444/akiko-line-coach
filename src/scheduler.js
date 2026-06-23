@@ -15,12 +15,12 @@ function startScheduler(lineClient) {
     } catch (e) { console.error("Morning error:", e.message); }
   }, { timezone: "Asia/Tokyo" });
 
-  // 6〜21時（月〜土）：返信がなければ毎時間チェック
-  cron.schedule("0 6-21 * * 1-6", async () => {
+  // 6〜15時（月〜土）：タスク配信後、1時間返信なければナッジ
+  cron.schedule("0 6-15 * * 1-6", async () => {
     const { userId, doneTasks } = getState();
     if (!userId) return;
-    if (!morningWasSentToday()) return;
-    if (hasRespondedSinceMorning()) return;
+    if (!morningWasSentToday()) return; // 朝のメッセージ未送信ならスキップ
+    if (hasRespondedSinceMorning()) return; // 返信済みならスキップ
     try {
       const msg = await generateHourlyNudge(doneTasks);
       await lineClient.pushMessage(userId, { type: "text", text: msg });
@@ -31,7 +31,7 @@ function startScheduler(lineClient) {
   // 毎日0時：日次リセット
   cron.schedule("0 0 * * *", () => { resetDaily(); console.log("Daily reset"); }, { timezone: "Asia/Tokyo" });
 
-  console.log("Scheduler started: 5am Mon-Sat, hourly nudge 6-21 Mon-Sat, no Sunday");
+  console.log("Scheduler started: 5am Mon-Sat, hourly nudge 6-15 Mon-Sat");
 }
 
 module.exports = { startScheduler };
