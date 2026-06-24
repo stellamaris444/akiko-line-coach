@@ -78,9 +78,30 @@ async function handleEvent(event) {
   return lineClient.replyMessage(event.replyToken, { type: "text", text: replyText });
 }
 
-// Keep-alive ping endpoint (軽量レスポンス)
+// Keep-alive ping endpoint（軽量レスポンス）
 app.get("/ping", (req, res) => res.send("OK"));
 
 app.get("/", (req, res) => res.send("Akiko LINE Coach running"));
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => { console.log(`Server on port ${PORT}`); startScheduler(lineClient); });
+app.listen(PORT, async () => {
+  console.log(`Server on port ${PORT}`);
+  startScheduler(lineClient);
+
+  // 再起動後にタスクリストを送信
+  setTimeout(async () => {
+    try {
+      const { userId, doneTasks } = getState();
+      if (!userId) {
+        console.log("再起動通知: userIdなし、スキップ");
+        return;
+      }
+      const taskList = formatTaskList(doneTasks);
+      const msg = "🔄 サーバーが再起動したよ！\n今日のタスクを送っとく👇\n\n" + taskList;
+      await lineClient.pushMessage(userId, { type: "text", text: msg });
+      console.log("再起動後タスクリスト送信完了");
+    } catch (e) {
+      console.error("再起動通知エラー:", e.message);
+    }
+  }, 5000); // 5秒待ってから送信（サーバー安定待ち）
+});
