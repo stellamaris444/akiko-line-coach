@@ -78,6 +78,9 @@ async function handleEvent(event) {
   return lineClient.replyMessage(event.replyToken, { type: "text", text: replyText });
 }
 
+// Keep-alive ping endpoint (軽量レスポンス)
+app.get("/ping", (req, res) => res.send("OK"));
+
 app.get("/", (req, res) => res.send("Akiko LINE Coach running"));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => { console.log(`Server on port ${PORT}`); startScheduler(lineClient); });
