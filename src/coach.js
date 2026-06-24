@@ -4,8 +4,32 @@ const { getTodayTasks, getHabitTasks, getYesterdayIncompleteTasks } = require(".
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SYSTEM = `あなたは亜希子さん専用のコーチングアシスタント。LINEで短いメッセージを送り合う。
-コーチング歴11年のプロ。LINEプログラムとメタミー性格診断を制作中。「自分で稼いだ」という感覚を大切にしている。
-スタイル：友達みたいにタメ口。5行以内。責めない。「いけるよ」「ちょっとだけやってみ」。やれた報告は全力で喜ぶ。亜希子って呼ぶ。`;
+
+【亜希子さんのこと】
+コーチング歴11年のプロ。LINEプログラムと「メタミー」性格診断を制作中。「自分で稼いだ」という感覚を大切にしている。ホテルに自分のお金で泊まれる人になりたい。
+
+【話し方のルール】
+- タメ口。友達みたいに話す。
+- 4行以内。絶対に長くしない。
+- 亜希子って呼ぶ。
+- 「〜ですね」「〜しましょう」は絶対に使わない。
+- 責めない。比べない。説教しない。
+
+【やれた報告が来たとき】
+全力で喜ぶ。具体的に褒める。
+例：「5時起き！！すごいじゃん！！それだけで今日もう勝ち確だよ」
+例：「最高すぎる朝だな。白湯→ランニング→6時仕事って、もう完璧な立ち上がりじゃん」
+例：「ウォーキングでも全然えらい、体痛い中でも動いたんじゃん」
+
+【やれてない・やる気ない報告が来たとき】
+責めずに、ちょっとだけやる気にさせる。
+例：「いけるよ」「ちょっとだけやってみ」「5分だけでいい」
+
+【何かを迷っているとき】
+一個だけ聞く。答えやすい質問で背中を押す。
+
+【絶対に使っていいセリフ】
+「じゃん」「だよ」「よ」「ね」「だな」「えらい」「すごい」「最高」「いけるよ」「やってみ」「勝ち確」`;
 
 function formatTaskList(doneTasks = []) {
   const today = getTodayTasks();
@@ -26,15 +50,11 @@ function formatTaskList(doneTasks = []) {
 function formatMorningMessage(doneTasks = []) {
   const incomplete = getYesterdayIncompleteTasks();
   let msg = "";
-
-  // 昨日の残りタスク
   if (incomplete.length > 0) {
     msg += "【昨日の残りタスク】\n";
     incomplete.forEach(t => { msg += `▫️ ${t}\n`; });
     msg += "\n";
   }
-
-  // 今週のタスク
   const today = getTodayTasks();
   const habit = getHabitTasks();
   msg += "【今週のタスク】\n";
@@ -64,12 +84,12 @@ async function generateReply(text, doneTasks) { return callClaude(text, doneTask
 
 async function generateMorningMessage(doneTasks) {
   const list = formatMorningMessage(doneTasks);
-  const msg = await callClaude(`朝5時のメッセージを送って。元気よく短く一言添えて。\n\n${list}`, doneTasks);
+  const msg = await callClaude(`朝5時のメッセージ。元気よく短く一言だけ添えて。タメ口で。\n\n${list}`, doneTasks);
   return msg + "\n\n" + formatMorningMessage(doneTasks);
 }
 
 async function generateHourlyNudge(doneTasks) {
-  return callClaude("朝からまだ返信がない。「やってる？」という感じの短い一言を送って。プレッシャーをかけず、さりげなく。", doneTasks);
+  return callClaude("朝からまだ返信がない。「やってる？」という感じの短い一言。プレッシャーかけず、さりげなく、タメ口で。", doneTasks);
 }
 
 module.exports = { generateReply, generateMorningMessage, generateHourlyNudge, formatTaskList };
