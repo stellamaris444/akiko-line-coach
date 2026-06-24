@@ -1,6 +1,6 @@
 const cron = require("node-cron");
-const { getState, resetDaily, morningWasSentToday, hasRespondedSinceMorning, setMorningMessageSent } = require("./storage");
-const { generateMorningMessage, generateHourlyNudge } = require("./coach");
+const { getState, resetDaily, morningWasSentToday, setMorningMessageSent, hasBeenInactiveFor1Hour } = require("./storage");
+const { generateMorningMessage, formatTaskList } = require("./coach");
 
 function startScheduler(lineClient) {
   // 毎朝5時（月〜土）：タスク配信
@@ -15,23 +15,23 @@ function startScheduler(lineClient) {
     } catch (e) { console.error("Morning error:", e.message); }
   }, { timezone: "Asia/Tokyo" });
 
-  // 6〜15時（月〜土）：タスク配信後、1時間返信なければナッジ
-  cron.schedule("0 6-15 * * 1-6", async () => {
+  // 6〜22時：1時間活動なければタスクリストを送る
+  cron.schedule("0 6-22 * * *", async () => {
     const { userId, doneTasks } = getState();
     if (!userId) return;
-    if (!morningWasSentToday()) return; // 朝のメッセージ未送信ならスキップ
-    if (hasRespondedSinceMorning()) return; // 返信済みならスキップ
+    if (!hasBeenInactiveFor1Hour()) return;
     try {
-      const msg = await generateHourlyNudge(doneTasks);
+      const taskList = formatTaskList(doneTasks);
+      const msg = "1時間経ったね👀タスクどう？👇\n\n" + taskList;
       await lineClient.pushMessage(userId, { type: "text", text: msg });
-      console.log("Hourly nudge sent");
-    } catch (e) { console.error("Hourly nudge error:", e.message); }
+      console.log("Inactivity task list sent");
+    } catch (e) { console.error("Inactivity nudge error:", e.message); }
   }, { timezone: "Asia/Tokyo" });
 
   // 毎日0時：日次リセット
   cron.schedule("0 0 * * *", () => { resetDaily(); console.log("Daily reset"); }, { timezone: "Asia/Tokyo" });
 
-  console.log("Scheduler started: 5am Mon-Sat, hourly nudge 6-15 Mon-Sat");
+  console.log("Scheduler started: 5am Mon-Sat, inactivity check 6-22 daily");
 }
 
 module.exports = { startScheduler };
