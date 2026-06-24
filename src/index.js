@@ -1,8 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const line = require("@line/bot-sdk");
-const { getState, setUserId, markTaskDone, updateActivity, resetDaily, getTodayTasks, getHabitTasks, setTodayTasks, setHabitTasks, morningWasSentToday, setMorningMessageSent } = require("./storage");
-const { generateReply, formatTaskList, generateMorningMessage } = require("./coach");
+const { getState, setUserId, markTaskDone, updateActivity, resetDaily, getTodayTasks, getHabitTasks, setTodayTasks, setHabitTasks, morningWasSentToday, hasRespondedSinceMorning, setMorningMessageSent } = require("./storage");
+const { generateReply, formatTaskList, generateMorningMessage, generateHourlyNudge } = require("./coach");
 const { startScheduler } = require("./scheduler");
 
 const lineConfig = {
@@ -17,17 +17,52 @@ app.post("/webhook", line.middleware(lineConfig), async (req, res) => {
   catch (err) { console.error(err); res.status(500).end(); }
 });
 
-// replyMessageが失敗したらpushMessageで再送
-async function sendReply(replyToken, userId, text) {
-  try {
-    await lineClient.replyMessage(replyToken, { type: "text", text });
-  } catch (e) {
-    console.log("replyMessage失敗、pushMessageで再送:", e.message);
-    if (userId) {
-      await lineClient.pushMessage(userId, { type: "text", text });
+// ping エンドポイント：cron-job.orgが叩くたびに時間チェックして必要なら配信
+app.get("/ping", async (req, res) => {
+  res.json({ status: "alive", time: new Date().toISOString() });
+
+  const { userId, doneTasks } = getState();
+  if (!userId) return;
+
+  const now = new Date();
+  // 日本時間に変換
+  const jst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+  const hour = jst.getHours();
+  const day = jst.getDay(); // 0=日曜
+
+  // 日曜は何もしない
+  if (day === 0) return;
+
+  // 5時台：朝のメッセージ未送信なら送る
+  if (hour === 5 && !morningWasSentToday()) {
+    try {
+      const msg = await generateMorningMessage(doneTasks);
+      await lineClient.pushMessage(userId, { type: "text", text: msg });
+      setMorningMessageSent();
+      console.log("Morning message sent via /ping");
+    } catch (e) { console.error("Morning via ping error:", e.message); }
+    return;
+  }
+
+  // 6〜15時：朝のメッセージ送信済みで返信なければナッジ
+  if (hour >= 6 && hour <= 15 && morningWasSentToday() && !hasRespondedSinceMorning()) {
+    // 最後のナッジから1時間以上経ってるか確認（連打防止）
+    const state = getState();
+    const lastNudge = state.lastNudgeAt ? new Date(state.lastNudgeAt) : null;
+    const minutesSinceLastNudge = lastNudge ? (now - lastNudge) / 60000 : 999;
+    if (minutesSinceLastNudge >= 55) {
+      try {
+        const msg = await generateHourlyNudge(doneTasks);
+        await lineClient.pushMessage(userId, { type: "text", text: msg });
+        const s = getState(); s.lastNudgeAt = now.toISOString();
+        const fs = require("fs"), path = require("path");
+        const FILE = path.join(__dirname, "..", "data.json");
+        fs.writeFileSync(FILE, JSON.stringify(s, null, 2));
+        console.log("Hourly nudge sent via /ping");
+      } catch (e) { console.error("Nudge via ping error:", e.message); }
     }
   }
-}
+});
 
 function parseTaskCommand(text) {
   const lines = text.split("\n").slice(1).filter(l => l.includes(":"));
@@ -53,26 +88,22 @@ async function handleEvent(event) {
 
   if (text === "タスク" || text === "今日のタスク") {
     replyText = formatTaskList(getState().doneTasks);
-
   } else if (text.startsWith("今日のタスク設定")) {
     const parsed = parseTaskCommand(text);
     if (!parsed) {
-      replyText = "形式はこれで送って！\n\n今日のタスク設定\nカテゴリ名: タスク1, タスク2\n\n例:\n今日のタスク設定\nLINE特典: テーマ決め, 本文書く\nメタミー: 質問書く";
+      replyText = "形式はこれで送って！\n\n今日のタスク設定\nカテゴリ名: タスク1, タスク2\n\n例:\n今日のタスク設定\nLINE特典: テーマ決め, 本文書く";
     } else {
-      setTodayTasks(parsed);
-      resetDaily();
+      setTodayTasks(parsed); resetDaily();
       replyText = "今日のタスク更新した！\n\n" + formatTaskList([]);
     }
-
   } else if (text.startsWith("習慣タスク設定")) {
     const parsed = parseTaskCommand(text);
     if (!parsed) {
-      replyText = "形式はこれで送って！\n\n習慣タスク設定\nカテゴリ名: タスク1, タスク2\n\n例:\n習慣タスク設定\n毎日の習慣: SNS投稿, 体を動かす";
+      replyText = "形式はこれで送って！\n\n習慣タスク設定\nカテゴリ名: タスク1, タスク2";
     } else {
       setHabitTasks(parsed);
-      replyText = "習慣タスク更新した！毎日届くよ。\n\n" + formatTaskList([]);
+      replyText = "習慣タスク更新した！\n\n" + formatTaskList([]);
     }
-
   } else {
     const { doneTasks } = getState();
     replyText = await generateReply(text, doneTasks);
@@ -87,37 +118,9 @@ async function handleEvent(event) {
     }
   }
 
-  await sendReply(event.replyToken, userId, replyText);
+  return lineClient.replyMessage(event.replyToken, { type: "text", text: replyText });
 }
 
-app.get("/ping", (req, res) => res.send("OK"));
 app.get("/", (req, res) => res.send("Akiko LINE Coach running"));
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-  console.log(`Server on port ${PORT}`);
-  startScheduler(lineClient);
-
-  setTimeout(async () => {
-    try {
-      const { userId, doneTasks } = getState();
-      if (!userId) { console.log("起動通知: userIdなし、スキップ"); return; }
-
-      // 朝のメッセージが今日まだ届いていない場合、5〜10時なら送る
-      const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-      const hour = now.getHours();
-      if (!morningWasSentToday() && hour >= 5 && hour < 10) {
-        console.log("朝のメッセージが未送信、補完送信します");
-        const msg = await generateMorningMessage(doneTasks);
-        await lineClient.pushMessage(userId, { type: "text", text: msg });
-        setMorningMessageSent();
-        console.log("補完朝メッセージ送信完了");
-      } else {
-        // 通常の再起動通知
-        const msg = "ちょっと再起動してた！\n今日のタスク、ここから👇\n\n" + formatTaskList(doneTasks);
-        await lineClient.pushMessage(userId, { type: "text", text: msg });
-        console.log("再起動通知送信完了");
-      }
-    } catch (e) { console.error("起動通知エラー:", e.message); }
-  }, 5000);
-});
+app.listen(PORT, () => { console.log(`Server on port ${PORT}`); startScheduler(lineClient); });
