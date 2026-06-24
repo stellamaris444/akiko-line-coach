@@ -17,6 +17,18 @@ app.post("/webhook", line.middleware(lineConfig), async (req, res) => {
   catch (err) { console.error(err); res.status(500).end(); }
 });
 
+// replyMessageが失敗したときpushMessageで送り直す
+async function sendReply(replyToken, userId, text) {
+  try {
+    await lineClient.replyMessage(replyToken, { type: "text", text });
+  } catch (e) {
+    console.log("replyMessage失敗、pushMessageで再送:", e.message);
+    if (userId) {
+      await lineClient.pushMessage(userId, { type: "text", text });
+    }
+  }
+}
+
 function parseTaskCommand(text) {
   const lines = text.split("\n").slice(1).filter(l => l.includes(":"));
   if (lines.length === 0) return null;
@@ -75,12 +87,10 @@ async function handleEvent(event) {
     }
   }
 
-  return lineClient.replyMessage(event.replyToken, { type: "text", text: replyText });
+  await sendReply(event.replyToken, userId, replyText);
 }
 
-// Keep-alive ping endpoint（軽量レスポンス）
 app.get("/ping", (req, res) => res.send("OK"));
-
 app.get("/", (req, res) => res.send("Akiko LINE Coach running"));
 
 const PORT = process.env.PORT || 3000;
@@ -92,16 +102,10 @@ app.listen(PORT, async () => {
   setTimeout(async () => {
     try {
       const { userId, doneTasks } = getState();
-      if (!userId) {
-        console.log("再起動通知: userIdなし、スキップ");
-        return;
-      }
-      const taskList = formatTaskList(doneTasks);
-      const msg = "🔄 サーバーが再起動したよ！\n今日のタスクを送っとく👇\n\n" + taskList;
+      if (!userId) { console.log("再起動通知: userIdなし、スキップ"); return; }
+      const msg = "ちょっと再起動してた！\n今日のタスク、ここから👇\n\n" + formatTaskList(doneTasks);
       await lineClient.pushMessage(userId, { type: "text", text: msg });
       console.log("再起動後タスクリスト送信完了");
-    } catch (e) {
-      console.error("再起動通知エラー:", e.message);
-    }
-  }, 5000); // 5秒待ってから送信（サーバー安定待ち）
+    } catch (e) { console.error("再起動通知エラー:", e.message); }
+  }, 5000);
 });
