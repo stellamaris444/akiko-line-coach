@@ -1,8 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const line = require("@line/bot-sdk");
-const { getState, setUserId, markTaskDone, updateActivity, resetDaily, getTodayTasks, getHabitTasks, setTodayTasks, setHabitTasks } = require("./storage");
-const { generateReply, formatTaskList } = require("./coach");
+const { getState, setUserId, markTaskDone, updateActivity, resetDaily, getTodayTasks, getHabitTasks, setTodayTasks, setHabitTasks, morningWasSentToday, setMorningMessageSent } = require("./storage");
+const { generateReply, formatTaskList, generateMorningMessage } = require("./coach");
 const { startScheduler } = require("./scheduler");
 
 const lineConfig = {
@@ -17,7 +17,7 @@ app.post("/webhook", line.middleware(lineConfig), async (req, res) => {
   catch (err) { console.error(err); res.status(500).end(); }
 });
 
-// replyMessageが失敗したときpushMessageで送り直す
+// replyMessageが失敗したらpushMessageで再送
 async function sendReply(replyToken, userId, text) {
   try {
     await lineClient.replyMessage(replyToken, { type: "text", text });
@@ -98,14 +98,26 @@ app.listen(PORT, async () => {
   console.log(`Server on port ${PORT}`);
   startScheduler(lineClient);
 
-  // 再起動後にタスクリストを送信
   setTimeout(async () => {
     try {
       const { userId, doneTasks } = getState();
-      if (!userId) { console.log("再起動通知: userIdなし、スキップ"); return; }
-      const msg = "ちょっと再起動してた！\n今日のタスク、ここから👇\n\n" + formatTaskList(doneTasks);
-      await lineClient.pushMessage(userId, { type: "text", text: msg });
-      console.log("再起動後タスクリスト送信完了");
-    } catch (e) { console.error("再起動通知エラー:", e.message); }
+      if (!userId) { console.log("起動通知: userIdなし、スキップ"); return; }
+
+      // 朝のメッセージが今日まだ届いていない場合、5〜10時なら送る
+      const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+      const hour = now.getHours();
+      if (!morningWasSentToday() && hour >= 5 && hour < 10) {
+        console.log("朝のメッセージが未送信、補完送信します");
+        const msg = await generateMorningMessage(doneTasks);
+        await lineClient.pushMessage(userId, { type: "text", text: msg });
+        setMorningMessageSent();
+        console.log("補完朝メッセージ送信完了");
+      } else {
+        // 通常の再起動通知
+        const msg = "ちょっと再起動してた！\n今日のタスク、ここから👇\n\n" + formatTaskList(doneTasks);
+        await lineClient.pushMessage(userId, { type: "text", text: msg });
+        console.log("再起動通知送信完了");
+      }
+    } catch (e) { console.error("起動通知エラー:", e.message); }
   }, 5000);
 });
