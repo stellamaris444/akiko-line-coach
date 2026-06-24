@@ -16,7 +16,6 @@ function markTaskDone(name) { const s = load(); if (!s.doneTasks.includes(name))
 
 function resetDaily() {
   const s = load();
-  // 終わらなかったタスクを保存してからリセット
   const allTasks = [];
   const today = s.customTodayTasks || require("../tasks").todayTasks;
   const habit = s.customHabitTasks || require("../tasks").habitTasks;
@@ -60,4 +59,12 @@ function hasRespondedSinceMorning() {
   return new Date(s.lastResponseAt) > new Date(s.morningMessageSentAt);
 }
 
-module.exports = { getState, setUserId, markTaskDone, resetDaily, updateActivity, getTodayTasks, getHabitTasks, setTodayTasks, setHabitTasks, setMorningMessageSent, morningWasSentToday, hasRespondedSinceMorning, getYesterdayIncompleteTasks };
+// 最後の活動から1時間以上経過しているか
+function hasBeenInactiveFor1Hour() {
+  const s = load();
+  if (!s.lastActivity) return true;
+  const diff = new Date() - new Date(s.lastActivity);
+  return diff > 60 * 60 * 1000;
+}
+
+module.exports = { getState, setUserId, markTaskDone, resetDaily, updateActivity, getTodayTasks, getHabitTasks, setTodayTasks, setHabitTasks, setMorningMessageSent, morningWasSentToday, hasRespondedSinceMorning, getYesterdayIncompleteTasks, hasBeenInactiveFor1Hour };
