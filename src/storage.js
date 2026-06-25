@@ -14,8 +14,26 @@ function loadDefaultTasks() {
 }
 
 function save(data) { fs.writeFileSync(FILE, JSON.stringify(data, null, 2), "utf8"); }
-function getState() { return load(); }
-function setUserId(id) { const s = load(); s.userId = id; save(s); }
+
+function getState() {
+  const s = load();
+  // デプロイでデータが消えても環境変数から復元
+  if (!s.userId && process.env.LINE_USER_ID) {
+    s.userId = process.env.LINE_USER_ID;
+  }
+  return s;
+}
+
+function setUserId(id) {
+  const s = load();
+  s.userId = id;
+  save(s);
+  // ログにuserIdを出力（Renderの環境変数設定に使う）
+  if (!process.env.LINE_USER_ID) {
+    console.log("★ LINE_USER_ID:", id, "← Renderの環境変数に追加してください");
+  }
+}
+
 function markTaskDone(name) { const s = load(); if (!s.doneTasks.includes(name)) s.doneTasks.push(name); s.lastActivity = new Date().toISOString(); save(s); }
 
 function resetDaily() {
