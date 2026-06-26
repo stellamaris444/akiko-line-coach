@@ -1,1 +1,11 @@
-{"customTodayTasks":null,"customHabitTasks":null,"updatedAt":null}
+{
+  "customTodayTasks": null,
+  "customHabitTasks": {
+    "毎日の習慣": [
+      "Threads5投稿",
+      "ストーリーズ更新",
+      "体を動かす"
+    ]
+  },
+  "updatedAt": "2026-06-26T02:32:15.266Z"
+}
