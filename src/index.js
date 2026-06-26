@@ -91,36 +91,15 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Server on port ${PORT}`);
 
-  // 起動時にGitHubからタスクを復元
-  const backup = await restoreTasksFromBackup();
-  if (backup) {
-    const s = require("./storage");
-    if (backup.customTodayTasks && Object.keys(getTodayTasks()).length === 0) {
-      setTodayTasks(backup.customTodayTasks);
+  // 起動時にGitHubからタスクを復元（通知は送らない）
+  try {
+    const backup = await restoreTasksFromBackup();
+    if (backup) {
+      if (backup.customTodayTasks && Object.keys(getTodayTasks()).length === 0) setTodayTasks(backup.customTodayTasks);
+      if (backup.customHabitTasks && Object.keys(getHabitTasks()).length === 0) setHabitTasks(backup.customHabitTasks);
     }
-    if (backup.customHabitTasks && Object.keys(getHabitTasks()).length === 0) {
-      setHabitTasks(backup.customHabitTasks);
-    }
-  }
+  } catch (e) { console.error("タスク復元エラー:", e.message); }
 
   startScheduler(lineClient);
-
-  setTimeout(async () => {
-    try {
-      const { userId, doneTasks } = getState();
-      if (!userId) { console.log("起動通知: userIdなし、スキップ"); return; }
-      const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-      const hour = now.getHours();
-      if (!morningWasSentToday() && hour >= 5 && hour < 10) {
-        const msg = await generateMorningMessage(doneTasks);
-        await lineClient.pushMessage(userId, { type: "text", text: msg });
-        setMorningMessageSent();
-        console.log("補完朝メッセージ送信完了");
-      } else {
-        const msg = "ちょっと再起動してた！\n今日のタスク、ここから👇\n\n" + formatTaskList(doneTasks);
-        await lineClient.pushMessage(userId, { type: "text", text: msg });
-        console.log("再起動通知送信完了");
-      }
-    } catch (e) { console.error("起動通知エラー:", e.message); }
-  }, 5000);
+  console.log("起動完了");
 });
