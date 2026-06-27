@@ -1,5 +1,11 @@
-// デフォルトタスク（LINEから「今日のタスク設定」「習慣タスク設定」で上書き可能）
 const todayTasks = {};
-const habitTasks = {};
+
+const habitTasks = {
+  "毎日の習慣": [
+    "Threads 5投稿",
+    "ストーリー更新",
+    "体を動かす"
+  ]
+};
 
 module.exports = { todayTasks, habitTasks };
