@@ -12,9 +12,35 @@ const lineConfig = {
 const lineClient = new line.Client(lineConfig);
 const app = express();
 
+// Webhook
 app.post("/webhook", line.middleware(lineConfig), async (req, res) => {
   try { await Promise.all(req.body.events.map(handleEvent)); res.json({ status: "ok" }); }
   catch (err) { console.error(err); res.status(500).end(); }
+});
+
+// Keep-alive
+app.get("/ping", (req, res) => res.send("OK"));
+app.get("/", (req, res) => res.send("Akiko LINE Coach running"));
+
+// 朝メッセージ用エンドポイント（cron-job.orgから叩く）
+app.get("/morning", async (req, res) => {
+  res.send("OK");
+  try {
+    const { userId, doneTasks } = getState();
+    if (!userId) { console.log("morning: userIdなし"); return; }
+    if (morningWasSentToday()) { console.log("morning: 今日は送信済み"); return; }
+    const msg = await generateMorningMessage(doneTasks);
+    await lineClient.pushMessage(userId, { type: "text", text: msg });
+    setMorningMessageSent();
+    console.log("朝メッセージ送信完了");
+  } catch (e) { console.error("朝メッセージエラー:", e.message); }
+});
+
+// 日次リセット用エンドポイント（cron-job.orgから叩く）
+app.get("/reset", (req, res) => {
+  resetDaily();
+  console.log("日次リセット完了");
+  res.send("OK");
 });
 
 async function sendReply(replyToken, userId, text) {
@@ -84,14 +110,9 @@ async function handleEvent(event) {
   await sendReply(event.replyToken, userId, replyText);
 }
 
-app.get("/ping", (req, res) => res.send("OK"));
-app.get("/", (req, res) => res.send("Akiko LINE Coach running"));
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Server on port ${PORT}`);
-
-  // 起動時にGitHubからタスクを復元（通知は送らない）
   try {
     const backup = await restoreTasksFromBackup();
     if (backup) {
@@ -99,7 +120,6 @@ app.listen(PORT, async () => {
       if (backup.customHabitTasks && Object.keys(getHabitTasks()).length === 0) setHabitTasks(backup.customHabitTasks);
     }
   } catch (e) { console.error("タスク復元エラー:", e.message); }
-
   startScheduler(lineClient);
   console.log("起動完了");
 });
