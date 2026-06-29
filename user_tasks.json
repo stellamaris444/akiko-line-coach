@@ -12,6 +12,12 @@
       "美容クリニック行く"
     ]
   },
-  "customHabitTasks": null,
-  "updatedAt": "2026-06-29T04:34:37.966Z"
+  "customHabitTasks": {
+    "毎日の習慣": [
+      "Threads 5投稿",
+      "ストーリー更新",
+      "体を動かす"
+    ]
+  },
+  "updatedAt": "2026-06-29T04:34:49.669Z"
 }
