@@ -1,5 +1,7 @@
 const todayTasks = {};
 
+const weeklyTasks = {};
+
 const habitTasks = {
   "毎日の習慣": [
     "Threads 5投稿",
@@ -8,4 +10,4 @@ const habitTasks = {
   ]
 };
 
-module.exports = { todayTasks, habitTasks };
+module.exports = { todayTasks, weeklyTasks, habitTasks };
