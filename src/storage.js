@@ -7,13 +7,18 @@ const BACKUP_FILE = "user_tasks.json";
 
 function load() {
   try {
-    if (fs.existsSync(FILE)) return JSON.parse(fs.readFileSync(FILE, "utf8"));
+    if (fs.existsSync(FILE)) {
+      const s = JSON.parse(fs.readFileSync(FILE, "utf8"));
+      if (s.customWeeklyTasks === undefined) s.customWeeklyTasks = null;
+      if (!s.doneWeeklyTasks) s.doneWeeklyTasks = [];
+      return s;
+    }
   } catch {}
-  return { userId: null, doneTasks: [], lastActivity: null, customTodayTasks: null, customHabitTasks: null, morningMessageSentAt: null, lastResponseAt: null, yesterdayIncompleteTasks: [] };
+  return { userId: null, doneTasks: [], doneWeeklyTasks: [], lastActivity: null, customTodayTasks: null, customWeeklyTasks: null, customHabitTasks: null, morningMessageSentAt: null, lastResponseAt: null, yesterdayIncompleteTasks: [] };
 }
 
 function loadDefaultTasks() {
-  try { return require("../tasks"); } catch { return { todayTasks: {}, habitTasks: {} }; }
+  try { return require("../tasks"); } catch { return { todayTasks: {}, habitTasks: {}, weeklyTasks: {} }; }
 }
 
 function save(data) { fs.writeFileSync(FILE, JSON.stringify(data, null, 2), "utf8"); }
@@ -37,13 +42,13 @@ function githubRequest(method, filePath, body, token) {
   });
 }
 
-async function backupTasks(todayTasks, habitTasks) {
+async function backupTasks(todayTasks, habitTasks, weeklyTasks) {
   const token = process.env.GITHUB_TOKEN;
   if (!token) return;
   try {
     const current = await githubRequest("GET", BACKUP_FILE, null, token);
     const sha = current.sha;
-    const content = Buffer.from(JSON.stringify({ customTodayTasks: todayTasks, customHabitTasks: habitTasks, updatedAt: new Date().toISOString() }, null, 2)).toString("base64");
+    const content = Buffer.from(JSON.stringify({ customTodayTasks: todayTasks, customHabitTasks: habitTasks, customWeeklyTasks: weeklyTasks, updatedAt: new Date().toISOString() }, null, 2)).toString("base64");
     await githubRequest("PUT", BACKUP_FILE, { message: "Auto-backup tasks", content, sha }, token);
     console.log("タスクをGitHubにバックアップしました");
   } catch (e) { console.error("バックアップ失敗:", e.message); }
@@ -56,7 +61,7 @@ async function restoreTasksFromBackup() {
     const result = await githubRequest("GET", BACKUP_FILE, null, token);
     if (!result.content) return null;
     const data = JSON.parse(Buffer.from(result.content, "base64").toString());
-    if (data.customTodayTasks || data.customHabitTasks) {
+    if (data.customTodayTasks || data.customHabitTasks || data.customWeeklyTasks) {
       console.log("GitHubからタスクを復元しました");
       return data;
     }
@@ -78,6 +83,7 @@ function setUserId(id) {
 }
 
 function markTaskDone(name) { const s = load(); if (!s.doneTasks.includes(name)) s.doneTasks.push(name); s.lastActivity = new Date().toISOString(); save(s); }
+function markWeeklyTaskDone(name) { const s = load(); if (!s.doneWeeklyTasks.includes(name)) s.doneWeeklyTasks.push(name); s.lastActivity = new Date().toISOString(); save(s); }
 
 function resetDaily() {
   const s = load();
@@ -89,6 +95,13 @@ function resetDaily() {
   s.yesterdayIncompleteTasks = allTasks.filter(t => !s.doneTasks.includes(t));
   s.doneTasks = [];
   s.morningMessageSentAt = null;
+  save(s);
+}
+
+// 週間タスクの完了状態だけをリセット(週初めなどに手動で呼ぶ想定)
+function resetWeekly() {
+  const s = load();
+  s.doneWeeklyTasks = [];
   save(s);
 }
 
@@ -104,8 +117,15 @@ function getHabitTasks() {
   if (s.customHabitTasks && Object.keys(s.customHabitTasks).length > 0) return s.customHabitTasks;
   return loadDefaultTasks().habitTasks;
 }
-function setTodayTasks(t) { const s = load(); s.customTodayTasks = t; save(s); backupTasks(t, s.customHabitTasks); }
-function setHabitTasks(t) { const s = load(); s.customHabitTasks = t; save(s); backupTasks(s.customTodayTasks, t); }
+function getWeeklyTasks() {
+  const s = load();
+  if (s.customWeeklyTasks && Object.keys(s.customWeeklyTasks).length > 0) return s.customWeeklyTasks;
+  const defaults = loadDefaultTasks();
+  return defaults.weeklyTasks || {};
+}
+function setTodayTasks(t) { const s = load(); s.customTodayTasks = t; save(s); backupTasks(t, s.customHabitTasks, s.customWeeklyTasks); }
+function setHabitTasks(t) { const s = load(); s.customHabitTasks = t; save(s); backupTasks(s.customTodayTasks, t, s.customWeeklyTasks); }
+function setWeeklyTasks(t) { const s = load(); s.customWeeklyTasks = t; s.doneWeeklyTasks = []; save(s); backupTasks(s.customTodayTasks, s.customHabitTasks, t); }
 function setMorningMessageSent() { const s = load(); s.morningMessageSentAt = new Date().toISOString(); save(s); }
 function getYesterdayIncompleteTasks() { return load().yesterdayIncompleteTasks || []; }
 
@@ -127,4 +147,4 @@ function hasBeenInactiveFor1Hour() {
   return new Date() - new Date(s.lastActivity) > 60 * 60 * 1000;
 }
 
-module.exports = { getState, setUserId, markTaskDone, resetDaily, updateActivity, getTodayTasks, getHabitTasks, setTodayTasks, setHabitTasks, setMorningMessageSent, morningWasSentToday, hasRespondedSinceMorning, getYesterdayIncompleteTasks, hasBeenInactiveFor1Hour, restoreTasksFromBackup };
+module.exports = { getState, setUserId, markTaskDone, markWeeklyTaskDone, resetDaily, resetWeekly, updateActivity, getTodayTasks, getHabitTasks, getWeeklyTasks, setTodayTasks, setHabitTasks, setWeeklyTasks, setMorningMessageSent, morningWasSentToday, hasRespondedSinceMorning, getYesterdayIncompleteTasks, hasBeenInactiveFor1Hour, restoreTasksFromBackup };
