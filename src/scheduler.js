@@ -5,10 +5,10 @@ const { generateMorningMessage, formatTaskList } = require("./coach");
 function startScheduler(lineClient) {
   // 毎朝5時（月〜土）：タスク配信
   cron.schedule("0 5 * * 1-6", async () => {
-    const { userId, doneTasks } = getState();
+    const { userId, doneTasks, doneWeeklyTasks } = getState();
     if (!userId) return;
     try {
-      const msg = await generateMorningMessage(doneTasks);
+      const msg = await generateMorningMessage(doneTasks, doneWeeklyTasks);
       await lineClient.pushMessage(userId, { type: "text", text: msg });
       setMorningMessageSent();
       console.log("Morning message sent");
@@ -17,11 +17,11 @@ function startScheduler(lineClient) {
 
   // 6〜17時：1時間活動なければタスクリストを送る
   cron.schedule("0 6-17 * * *", async () => {
-    const { userId, doneTasks } = getState();
+    const { userId, doneTasks, doneWeeklyTasks } = getState();
     if (!userId) return;
     if (!hasBeenInactiveFor1Hour()) return;
     try {
-      const taskList = formatTaskList(doneTasks);
+      const taskList = formatTaskList(doneTasks, doneWeeklyTasks);
       const msg = "1時間経ったね👀タスクどう？👇\n\n" + taskList;
       await lineClient.pushMessage(userId, { type: "text", text: msg });
       console.log("Inactivity task list sent");
