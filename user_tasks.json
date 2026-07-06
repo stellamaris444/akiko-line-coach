@@ -2,7 +2,8 @@
   "customTodayTasks": {
     "コンテンツ": [
       "リールの台本12本作成",
-      "インスタLINE告知画像作成"
+      "インスタLINE告知画像作成",
+      "リールフォーマットの色確認"
     ],
     "LINE": [
       "ステップ配信完成"
@@ -10,5 +11,5 @@
   },
   "customHabitTasks": null,
   "customWeeklyTasks": null,
-  "updatedAt": "2026-07-06T05:52:58.147Z"
+  "updatedAt": "2026-07-06T05:53:07.805Z"
 }
