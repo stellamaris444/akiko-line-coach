@@ -15,8 +15,8 @@ function startScheduler(lineClient) {
     } catch (e) { console.error("Morning error:", e.message); }
   }, { timezone: "Asia/Tokyo" });
 
-  // 6〜17時：1時間活動なければタスクリストを送る
-  cron.schedule("0 6-17 * * *", async () => {
+  // 6〜15時：1時間活動なければタスクリストを送る
+  cron.schedule("0 6-15 * * *", async () => {
     const { userId, doneTasks, doneWeeklyTasks } = getState();
     if (!userId) return;
     if (!hasBeenInactiveFor1Hour()) return;
@@ -31,7 +31,7 @@ function startScheduler(lineClient) {
   // 毎日0時：日次リセット
   cron.schedule("0 0 * * *", () => { resetDaily(); console.log("Daily reset"); }, { timezone: "Asia/Tokyo" });
 
-  console.log("Scheduler started: 5am Mon-Sat, inactivity check 6-17 daily");
+  console.log("Scheduler started: 5am Mon-Sat, inactivity check 6-15 daily");
 }
 
 module.exports = { startScheduler };
