@@ -128,8 +128,11 @@ async function handleEvent(event) {
 }
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-  console.log(`Server on port ${PORT}`);
+
+// サーバーがリクエストを受け付け始める前に、必ずGitHubバックアップからの復元を完了させる。
+// こうすることで「復元が終わる前にLINEのメッセージが処理されてバックアップが
+// 未完成のデータで上書きされてしまう」という事故を防ぐ。
+(async () => {
   try {
     const backup = await restoreTasksFromBackup();
     if (backup) {
@@ -138,6 +141,11 @@ app.listen(PORT, async () => {
       if (backup.customWeeklyTasks && Object.keys(getWeeklyTasks()).length === 0) setWeeklyTasks(backup.customWeeklyTasks);
     }
   } catch (e) { console.error("タスク復元エラー:", e.message); }
-  startScheduler(lineClient);
-  console.log("起動完了");
-});
+
+  app.listen(PORT, () => {
+    console.log(`Server on port ${PORT}`);
+    startScheduler(lineClient);
+    console.log("起動完了");
+  });
+})();
+
