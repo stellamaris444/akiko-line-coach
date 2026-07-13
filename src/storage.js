@@ -42,13 +42,23 @@ function githubRequest(method, filePath, body, token) {
   });
 }
 
+// todayTasks/habitTasks/weeklyTasksはundefinedを渡すと「変更しない」扱いになり、
+// GitHub上の既存バックアップの値がそのまま維持される（ローカルの未復元データで上書きしない）
 async function backupTasks(todayTasks, habitTasks, weeklyTasks) {
   const token = process.env.GITHUB_TOKEN;
   if (!token) return;
   try {
     const current = await githubRequest("GET", BACKUP_FILE, null, token);
     const sha = current.sha;
-    const content = Buffer.from(JSON.stringify({ customTodayTasks: todayTasks, customHabitTasks: habitTasks, customWeeklyTasks: weeklyTasks, updatedAt: new Date().toISOString() }, null, 2)).toString("base64");
+    let existing = {};
+    try { existing = JSON.parse(Buffer.from(current.content, "base64").toString()); } catch {}
+    const merged = {
+      customTodayTasks: todayTasks !== undefined ? todayTasks : existing.customTodayTasks,
+      customHabitTasks: habitTasks !== undefined ? habitTasks : existing.customHabitTasks,
+      customWeeklyTasks: weeklyTasks !== undefined ? weeklyTasks : existing.customWeeklyTasks,
+      updatedAt: new Date().toISOString(),
+    };
+    const content = Buffer.from(JSON.stringify(merged, null, 2)).toString("base64");
     await githubRequest("PUT", BACKUP_FILE, { message: "Auto-backup tasks", content, sha }, token);
     console.log("タスクをGitHubにバックアップしました");
   } catch (e) { console.error("バックアップ失敗:", e.message); }
@@ -123,9 +133,9 @@ function getWeeklyTasks() {
   const defaults = loadDefaultTasks();
   return defaults.weeklyTasks || {};
 }
-function setTodayTasks(t) { const s = load(); s.customTodayTasks = t; save(s); backupTasks(t, s.customHabitTasks, s.customWeeklyTasks); }
-function setHabitTasks(t) { const s = load(); s.customHabitTasks = t; save(s); backupTasks(s.customTodayTasks, t, s.customWeeklyTasks); }
-function setWeeklyTasks(t) { const s = load(); s.customWeeklyTasks = t; s.doneWeeklyTasks = []; save(s); backupTasks(s.customTodayTasks, s.customHabitTasks, t); }
+function setTodayTasks(t) { const s = load(); s.customTodayTasks = t; save(s); backupTasks(t, undefined, undefined); }
+function setHabitTasks(t) { const s = load(); s.customHabitTasks = t; save(s); backupTasks(undefined, t, undefined); }
+function setWeeklyTasks(t) { const s = load(); s.customWeeklyTasks = t; s.doneWeeklyTasks = []; save(s); backupTasks(undefined, undefined, t); }
 function setMorningMessageSent() { const s = load(); s.morningMessageSentAt = new Date().toISOString(); save(s); }
 function getYesterdayIncompleteTasks() { return load().yesterdayIncompleteTasks || []; }
 
